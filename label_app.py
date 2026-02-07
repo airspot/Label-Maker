@@ -59,7 +59,7 @@ def render_label(link_name: str, qr_content: str, bar_color: str, dpi: int, font
     img = Image.new("RGBA", (W, H), "white")
     draw = ImageDraw.Draw(img)
 
-    # Proportions like your sample image
+    # Proportions like your sample
     pad_lr = int(0.07 * W)
     top_pad = int(0.06 * H)
     bottom_pad = int(0.06 * H)
@@ -78,7 +78,7 @@ def render_label(link_name: str, qr_content: str, bar_color: str, dpi: int, font
     qr_y = qr_zone_y0 + ((qr_zone_y1 - qr_zone_y0) - qr_target) // 2
     img.alpha_composite(qr_img, (qr_x, qr_y))
 
-    # Bottom bar (no border)
+    # Bottom bar
     bar_x0 = int(0.12 * W)
     bar_x1 = W - int(0.12 * W)
     bar_y0 = H - bar_h
@@ -92,7 +92,7 @@ def render_label(link_name: str, qr_content: str, bar_color: str, dpi: int, font
         outline=None,
     )
 
-    # Text limits
+    # Text limits in bar
     max_text_w = (bar_x1 - bar_x0) - int(0.18 * W)
     max_text_h = (bar_y1 - bar_y0) - int(0.15 * bar_h)
 
@@ -107,17 +107,46 @@ def render_label(link_name: str, qr_content: str, bar_color: str, dpi: int, font
     return img.convert("RGB")
 
 # -----------------------------
-# Streamlit UI
+# Streamlit UI (Form + Preview inside "tables"/cards)
 # -----------------------------
 st.set_page_config(page_title="EAI Links Label Generator", layout="wide")
-st.markdown("<h2 style='text-align:center;'>EAI Links Label Generator</h2>", unsafe_allow_html=True)
 
-COLOR_OPTIONS = {
-    "🟥 Red": "#E43F6F",
-    "🟦 Blue": "#008DD5",
-}
+st.markdown(
+    """
+    <style>
+      .card {
+        border: 1px solid #e6e6e6;
+        border-radius: 14px;
+        padding: 18px 18px 14px 18px;
+        background: #ffffff;
+      }
+      .card h3 {
+        margin-top: 0px;
+        margin-bottom: 14px;
+      }
+      .center-title {
+        text-align: center;
+        margin-top: 0.2rem;
+        margin-bottom: 1.2rem;
+      }
+      .btn-row {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        margin-top: 14px;
+      }
+      /* Remove weird empty input-like box sometimes shown by markdown */
+      .stMarkdown > div:empty { display:none; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-# Keep generated image in session
+st.markdown("<h2 class='center-title'>EAI Links Label Generator</h2>", unsafe_allow_html=True)
+
+COLOR_OPTIONS = {"🟥 Red": "#E43F6F", "🟦 Blue": "#008DD5"}
+
+# Session state
 if "label_img" not in st.session_state:
     st.session_state.label_img = None
 if "download_name" not in st.session_state:
@@ -125,11 +154,11 @@ if "download_name" not in st.session_state:
 if "dpi" not in st.session_state:
     st.session_state.dpi = 300
 
-left, right = st.columns([1, 1.2], gap="large")
+left, right = st.columns([1, 1.25], gap="large")
 
-# -------- Left: Form --------
+# -------- Left card: Form --------
 with left:
-    st.subheader("Form")
+    st.markdown("<div class='card'><h3>Form</h3>", unsafe_allow_html=True)
 
     link_name = st.text_input("Link", value="2L3")
     qr_content = st.text_input("QR Content", value="2L3/D12-43/AE12-43/48P")
@@ -141,7 +170,8 @@ with left:
     dpi = st.selectbox("DPI", [300, 200, 150], index=0)
     font_pt = st.selectbox("Font size", [8, 9, 10, 11, 12], index=2)
 
-    if st.button("Generate", use_container_width=True, type="primary"):
+    # Generate button at bottom of the form card
+    if st.button("Generate", type="primary", use_container_width=True):
         img = render_label(
             link_name.strip(),
             qr_content.strip(),
@@ -153,42 +183,27 @@ with left:
         st.session_state.download_name = f"{(link_name.strip() or 'label')}.png"
         st.session_state.dpi = int(dpi)
 
-# -------- Right: Preview "table" --------
-with right:
-    st.subheader("Preview")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    # A "table-like" container using an HTML card
-    st.markdown(
-        """
-        <div style="
-            border:1px solid #e6e6e6;
-            border-radius:12px;
-            padding:16px;
-            background:#ffffff;
-        ">
-        """,
-        unsafe_allow_html=True,
-    )
+# -------- Right card: Preview --------
+with right:
+    st.markdown("<div class='card'><h3>Preview</h3>", unsafe_allow_html=True)
 
     if st.session_state.label_img is None:
-        st.info("Generate a label to preview it here.")
+        st.info("Click Generate to show the preview.")
+        st.markdown("</div>", unsafe_allow_html=True)
     else:
-        st.image(st.session_state.label_img, use_container_width=False)
+        st.image(st.session_state.label_img)
 
-    # Buttons centered at bottom of preview box
-    st.markdown("<div style='display:flex;justify-content:center;margin-top:14px;'>", unsafe_allow_html=True)
-
-    if st.session_state.label_img is not None:
+        # Centered download button at bottom of preview card
         buf = io.BytesIO()
         st.session_state.label_img.save(buf, format="PNG", dpi=(st.session_state.dpi, st.session_state.dpi))
+
+        st.markdown("<div class='btn-row'>", unsafe_allow_html=True)
         st.download_button(
             "Download PNG",
             data=buf.getvalue(),
             file_name=st.session_state.download_name,
             mime="image/png",
         )
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # close container
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div></div>", unsafe_allow_html=True)
