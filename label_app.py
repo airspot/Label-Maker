@@ -10,7 +10,6 @@ def cm_to_px(cm: float, dpi: int) -> int:
     return int(round((cm / 2.54) * dpi))
 
 def pt_to_px(pt: float, dpi: int) -> int:
-    # 1pt = 1/72 inch
     return int(round((pt * dpi) / 72.0))
 
 def load_font(size_px: int) -> ImageFont.ImageFont:
@@ -60,7 +59,7 @@ def render_label(link_name: str, qr_content: str, bar_color: str, dpi: int, font
     img = Image.new("RGBA", (W, H), "white")
     draw = ImageDraw.Draw(img)
 
-    # Proportions matching your sample
+    # Proportions like your sample image
     pad_lr = int(0.07 * W)
     top_pad = int(0.06 * H)
     bottom_pad = int(0.06 * H)
@@ -93,7 +92,7 @@ def render_label(link_name: str, qr_content: str, bar_color: str, dpi: int, font
         outline=None,
     )
 
-    # Text limits inside bar
+    # Text limits
     max_text_w = (bar_x1 - bar_x0) - int(0.18 * W)
     max_text_h = (bar_y1 - bar_y0) - int(0.15 * bar_h)
 
@@ -110,55 +109,86 @@ def render_label(link_name: str, qr_content: str, bar_color: str, dpi: int, font
 # -----------------------------
 # Streamlit UI
 # -----------------------------
-st.set_page_config(page_title="EAI Links Label Generator", layout="centered")
-
-# Centered title
+st.set_page_config(page_title="EAI Links Label Generator", layout="wide")
 st.markdown("<h2 style='text-align:center;'>EAI Links Label Generator</h2>", unsafe_allow_html=True)
 
-# Colors (visual in radio via emoji)
 COLOR_OPTIONS = {
     "🟥 Red": "#E43F6F",
     "🟦 Blue": "#008DD5",
 }
 
-with st.form("label_form"):
+# Keep generated image in session
+if "label_img" not in st.session_state:
+    st.session_state.label_img = None
+if "download_name" not in st.session_state:
+    st.session_state.download_name = "label.png"
+if "dpi" not in st.session_state:
+    st.session_state.dpi = 300
+
+left, right = st.columns([1, 1.2], gap="large")
+
+# -------- Left: Form --------
+with left:
+    st.subheader("Form")
+
     link_name = st.text_input("Link", value="2L3")
     qr_content = st.text_input("QR Content", value="2L3/D12-43/AE12-43/48P")
 
     st.markdown("**Color**")
-    choice = st.radio(
-        "",
-        list(COLOR_OPTIONS.keys()),
-        horizontal=True,
-        label_visibility="collapsed",
-    )
+    choice = st.radio("", list(COLOR_OPTIONS.keys()), horizontal=True, label_visibility="collapsed")
     bar_color = COLOR_OPTIONS[choice]
 
     dpi = st.selectbox("DPI", [300, 200, 150], index=0)
-
-    # Font size choices: 8 to 12 max (default 10)
     font_pt = st.selectbox("Font size", [8, 9, 10, 11, 12], index=2)
 
-    submitted = st.form_submit_button("Generate")
+    if st.button("Generate", use_container_width=True, type="primary"):
+        img = render_label(
+            link_name.strip(),
+            qr_content.strip(),
+            bar_color,
+            dpi=int(dpi),
+            font_pt=float(font_pt),
+        )
+        st.session_state.label_img = img
+        st.session_state.download_name = f"{(link_name.strip() or 'label')}.png"
+        st.session_state.dpi = int(dpi)
 
-if submitted:
-    label_img = render_label(
-        link_name.strip(),
-        qr_content.strip(),
-        bar_color,
-        dpi=int(dpi),
-        font_pt=float(font_pt),
-    )
-
+# -------- Right: Preview "table" --------
+with right:
     st.subheader("Preview")
-    st.image(label_img)
 
-    buf = io.BytesIO()
-    label_img.save(buf, format="PNG", dpi=(int(dpi), int(dpi)))
-
-    st.download_button(
-        "Download PNG",
-        data=buf.getvalue(),
-        file_name=f"{(link_name.strip() or 'label')}.png",
-        mime="image/png",
+    # A "table-like" container using an HTML card
+    st.markdown(
+        """
+        <div style="
+            border:1px solid #e6e6e6;
+            border-radius:12px;
+            padding:16px;
+            background:#ffffff;
+        ">
+        """,
+        unsafe_allow_html=True,
     )
+
+    if st.session_state.label_img is None:
+        st.info("Generate a label to preview it here.")
+    else:
+        st.image(st.session_state.label_img, use_container_width=False)
+
+    # Buttons centered at bottom of preview box
+    st.markdown("<div style='display:flex;justify-content:center;margin-top:14px;'>", unsafe_allow_html=True)
+
+    if st.session_state.label_img is not None:
+        buf = io.BytesIO()
+        st.session_state.label_img.save(buf, format="PNG", dpi=(st.session_state.dpi, st.session_state.dpi))
+        st.download_button(
+            "Download PNG",
+            data=buf.getvalue(),
+            file_name=st.session_state.download_name,
+            mime="image/png",
+        )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # close container
+    st.markdown("</div>", unsafe_allow_html=True)
