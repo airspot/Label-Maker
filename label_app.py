@@ -124,3 +124,47 @@ COLOR_OPTIONS = {
 with st.form("label_form"):
     liaison_name = st.text_input("Liaison name (under QR)", value="2L3")
     qr_content = st.text_input("QR content", value="2L3/D12-43/AE12-43/48P")
+
+    choice = st.radio("Choose color", list(COLOR_OPTIONS.keys()), horizontal=True)
+    bar_color = COLOR_OPTIONS[choice]
+
+    st.markdown(
+        f"""
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:26px;height:26px;border-radius:6px;background:{bar_color};border:1px solid #ddd;"></div>
+          <div style="font-size:14px;">Selected: <b>{choice}</b></div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    dpi = st.selectbox("Export DPI (keeps 2.5×3.5 cm size)", [300, 200, 150], index=0)
+
+    # ✅ Font size choice (pt), default 10 pt
+    font_pt = st.selectbox("Font size (pt)", [8, 9, 10, 11, 12, 14, 16, 18, 20], index=2)
+
+    submitted = st.form_submit_button("Generate")
+
+if submitted:
+    label_img = render_label(
+        liaison_name.strip(),
+        qr_content.strip(),
+        bar_color,
+        dpi=int(dpi),
+        font_pt=float(font_pt),
+    )
+
+    st.subheader("Preview")
+    st.image(label_img)
+
+    buf = io.BytesIO()
+    label_img.save(buf, format="PNG", dpi=(int(dpi), int(dpi)))
+
+    st.download_button(
+        "Download PNG",
+        data=buf.getvalue(),
+        file_name=f"{liaison_name.strip() or 'label'}.png",
+        mime="image/png",
+    )
+
+st.caption("Fixed size: 2.5 cm × 3.5 cm. No border. QR on top + colored name bar.")
