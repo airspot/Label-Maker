@@ -95,76 +95,73 @@ def render_label(link_name: str, qr_content: str, bar_color: str, dpi: int, font
 
     return img.convert("RGB")
 
+
 # ======================
 # Streamlit UI (Modern)
 # ======================
 st.set_page_config(page_title="EAI Links Label Generator", layout="wide")
 
-st.markdown(
-    """
-    <style>
-      /* Page spacing */
-      .block-container { padding-top: 1.2rem; padding-bottom: 2.5rem; max-width: 1200px; }
+PRIMARY_BTN = "#ff4b4b"  # same look for Generate + Download
 
-      /* Title */
-      .app-title {
+st.markdown(
+    f"""
+    <style>
+      .block-container {{ padding-top: 1.1rem; padding-bottom: 2.5rem; max-width: 1200px; }}
+
+      .app-title {{
         text-align: center;
         font-size: 34px;
         font-weight: 800;
         letter-spacing: -0.5px;
         margin: 0.2rem 0 1.2rem 0;
-      }
-      .app-subtitle {
-        text-align: center;
-        color: #6b7280;
-        margin-top: -0.8rem;
-        margin-bottom: 1.6rem;
-        font-size: 14px;
-      }
+      }}
 
-      /* Cards */
-      .card {
+      .card {{
         border: 1px solid rgba(229,231,235,1);
         background: rgba(255,255,255,1);
         border-radius: 16px;
         padding: 18px 18px 16px 18px;
         box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-      }
-      .card h3 {
+      }}
+      .card h3 {{
         margin: 0 0 12px 0;
         font-size: 18px;
         font-weight: 750;
-      }
+      }}
 
-      /* Small helper text */
-      .hint { color:#6b7280; font-size: 12px; margin-top:-6px; margin-bottom: 10px; }
+      /* Inputs */
+      .stTextInput > div > div input {{ border-radius: 12px; }}
+      .stSelectbox > div > div {{ border-radius: 12px; }}
 
-      /* Download row */
-      .dl-row { display:flex; justify-content:center; margin-top: 14px; }
-
-      /* Make radio look tighter */
-      div[role="radiogroup"] > label { margin-right: 16px; }
-
-      /* Improve input widths */
-      .stTextInput > div > div input { border-radius: 12px; }
-      .stSelectbox > div > div { border-radius: 12px; }
-
-      /* Buttons */
-      .stButton > button, .stDownloadButton > button {
+      /* Make BOTH buttons same style (Generate + Download) */
+      .stButton > button, .stDownloadButton > button {{
+        background: {PRIMARY_BTN} !important;
+        color: white !important;
+        border: 1px solid {PRIMARY_BTN} !important;
         border-radius: 12px !important;
-        padding: 0.65rem 1rem !important;
-        font-weight: 650 !important;
-      }
+        padding: 0.70rem 1.05rem !important;
+        font-weight: 700 !important;
+      }}
+      .stButton > button:hover, .stDownloadButton > button:hover {{
+        filter: brightness(0.95);
+      }}
 
-      /* Make images centered inside preview */
-      .stImage { display:flex; justify-content:center; }
+      /* Center image inside preview */
+      .stImage {{ display:flex; justify-content:center; }}
+
+      /* Center bottom buttons row */
+      .btn-row {{
+        display:flex;
+        justify-content:center;
+        gap: 14px;
+        margin-top: 14px;
+      }}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 st.markdown('<div class="app-title">EAI Links Label Generator</div>', unsafe_allow_html=True)
-st.markdown('<div class="app-subtitle">Generate a 2.5cm × 3.5cm QR label and export as PNG</div>', unsafe_allow_html=True)
 
 COLOR_OPTIONS = {
     "🟥 Red": "#E43F6F",
@@ -185,8 +182,6 @@ with left:
     link_name = st.text_input("Link", value="2L3")
     qr_content = st.text_input("QR Content", value="2L3/D12-43/AE12-43/48P")
 
-    st.markdown('<div class="hint">Tip: QR Content can be any string (e.g., 2L3/D12-43/AE12-43/48P).</div>', unsafe_allow_html=True)
-
     st.markdown("**Color**")
     choice = st.radio("", list(COLOR_OPTIONS.keys()), horizontal=True, label_visibility="collapsed")
     bar_color = COLOR_OPTIONS[choice]
@@ -197,7 +192,7 @@ with left:
     with c2:
         font_pt = st.selectbox("Font size", [8, 9, 10, 11, 12], index=2)
 
-    generate = st.button("Generate", type="primary", use_container_width=True)
+    generate = st.button("Generate", use_container_width=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -226,7 +221,7 @@ with right:
         buf = io.BytesIO()
         st.session_state.label_img.save(buf, format="PNG", dpi=(st.session_state.dpi, st.session_state.dpi))
 
-        st.markdown('<div class="dl-row">', unsafe_allow_html=True)
+        st.markdown('<div class="btn-row">', unsafe_allow_html=True)
         st.download_button(
             "Download PNG",
             data=buf.getvalue(),
