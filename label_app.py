@@ -52,7 +52,7 @@ def make_qr(data: str, target_px: int) -> Image.Image:
     img = qr.make_image(fill_color="#4a4a4a", back_color="white").convert("RGBA")
     return img.resize((target_px, target_px), resample=Image.Resampling.NEAREST)
 
-def render_label(liaison_name: str, qr_content: str, bar_color: str, dpi: int, font_pt: float) -> Image.Image:
+def render_label(link_name: str, qr_content: str, bar_color: str, dpi: int, font_pt: float) -> Image.Image:
     # Exact physical size: 2.5 cm x 3.5 cm (portrait)
     W = cm_to_px(2.5, dpi)
     H = cm_to_px(3.5, dpi)
@@ -60,7 +60,7 @@ def render_label(liaison_name: str, qr_content: str, bar_color: str, dpi: int, f
     img = Image.new("RGBA", (W, H), "white")
     draw = ImageDraw.Draw(img)
 
-    # Proportions like your sample
+    # Proportions matching your sample
     pad_lr = int(0.07 * W)
     top_pad = int(0.06 * H)
     bottom_pad = int(0.06 * H)
@@ -79,7 +79,7 @@ def render_label(liaison_name: str, qr_content: str, bar_color: str, dpi: int, f
     qr_y = qr_zone_y0 + ((qr_zone_y1 - qr_zone_y0) - qr_target) // 2
     img.alpha_composite(qr_img, (qr_x, qr_y))
 
-    # Bottom bar
+    # Bottom bar (no border)
     bar_x0 = int(0.12 * W)
     bar_x1 = W - int(0.12 * W)
     bar_y0 = H - bar_h
@@ -93,61 +93,69 @@ def render_label(liaison_name: str, qr_content: str, bar_color: str, dpi: int, f
         outline=None,
     )
 
-    # Text area limits inside bar
+    # Text limits inside bar
     max_text_w = (bar_x1 - bar_x0) - int(0.18 * W)
     max_text_h = (bar_y1 - bar_y0) - int(0.15 * bar_h)
 
-    # Start size = chosen pt converted to px (keeps print size consistent)
     start_px = pt_to_px(font_pt, dpi)
+    font = fit_text(draw, link_name, max_text_w, max_text_h, start_px=start_px)
 
-    # Fit down if text is too long
-    font = fit_text(draw, liaison_name, max_text_w, max_text_h, start_px=start_px)
-
-    # Perfect center text
+    # Perfect center
     cx = (bar_x0 + bar_x1) // 2
     cy = (bar_y0 + bar_y1) // 2
-    draw.text((cx, cy), liaison_name, font=font, fill="black", anchor="mm")
+    draw.text((cx, cy), link_name, font=font, fill="black", anchor="mm")
 
     return img.convert("RGB")
 
 # -----------------------------
 # Streamlit UI
 # -----------------------------
-st.set_page_config(page_title="Simple Liaison Label", layout="centered")
-st.title("Simple Liaison Label Generator")
+st.set_page_config(page_title="EAI Links Label Generator", layout="centered")
 
+# Centered title
+st.markdown("<h2 style='text-align:center;'>EAI Links Label Generator</h2>", unsafe_allow_html=True)
+
+# Corrected colors (your old "pink" is now called Red, and we use the actual color you want)
 COLOR_OPTIONS = {
-    "🟪 Pink": "#E43F6F",
+    "🟥 Red": "#E43F6F",
     "🟦 Blue": "#008DD5",
 }
 
 with st.form("label_form"):
-    liaison_name = st.text_input("Liaison name (under QR)", value="2L3")
-    qr_content = st.text_input("QR content", value="2L3/D12-43/AE12-43/48P")
+    link_name = st.text_input("Link", value="2L3")
+    qr_content = st.text_input("QR Content", value="2L3/D12-43/AE12-43/48P")
 
-    choice = st.radio("Choose color", list(COLOR_OPTIONS.keys()), horizontal=True)
+    st.markdown("**Color**")
+    choice = st.radio("", list(COLOR_OPTIONS.keys()), horizontal=True, label_visibility="collapsed")
     bar_color = COLOR_OPTIONS[choice]
 
+    # Visual swatches ONLY (no “Selected option” text)
     st.markdown(
         f"""
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div style="width:26px;height:26px;border-radius:6px;background:{bar_color};border:1px solid #ddd;"></div>
-          <div style="font-size:14px;">Selected: <b>{choice}</b></div>
+        <div style="display:flex;gap:12px;align-items:center;margin-top:6px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:22px;height:22px;border-radius:6px;background:{COLOR_OPTIONS['🟥 Red']};border:1px solid #ddd;"></div>
+            <span style="font-size:13px;">Red</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:22px;height:22px;border-radius:6px;background:{COLOR_OPTIONS['🟦 Blue']};border:1px solid #ddd;"></div>
+            <span style="font-size:13px;">Blue</span>
+          </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    dpi = st.selectbox("Export DPI (keeps 2.5×3.5 cm size)", [300, 200, 150], index=0)
+    dpi = st.selectbox("DPI", [300, 200, 150], index=0)
 
-    # ✅ Font size choice (pt), default 10 pt
-    font_pt = st.selectbox("Font size (pt)", [8, 9, 10, 11, 12, 14, 16, 18, 20], index=2)
+    # Font size choices: 8 to 12 max
+    font_pt = st.selectbox("Font size", [8, 9, 10, 11, 12], index=2)
 
     submitted = st.form_submit_button("Generate")
 
 if submitted:
     label_img = render_label(
-        liaison_name.strip(),
+        link_name.strip(),
         qr_content.strip(),
         bar_color,
         dpi=int(dpi),
@@ -163,8 +171,6 @@ if submitted:
     st.download_button(
         "Download PNG",
         data=buf.getvalue(),
-        file_name=f"{liaison_name.strip() or 'label'}.png",
+        file_name=f"{(link_name.strip() or 'label')}.png",
         mime="image/png",
     )
-
-st.caption("Fixed size: 2.5 cm × 3.5 cm. No border. QR on top + colored name bar.")
