@@ -115,7 +115,7 @@ st.set_page_config(page_title="EAI Links Label Generator", layout="centered")
 # Centered title
 st.markdown("<h2 style='text-align:center;'>EAI Links Label Generator</h2>", unsafe_allow_html=True)
 
-# Corrected colors (your old "pink" is now called Red, and we use the actual color you want)
+# Colors (visual in radio via emoji)
 COLOR_OPTIONS = {
     "🟥 Red": "#E43F6F",
     "🟦 Blue": "#008DD5",
@@ -126,29 +126,17 @@ with st.form("label_form"):
     qr_content = st.text_input("QR Content", value="2L3/D12-43/AE12-43/48P")
 
     st.markdown("**Color**")
-    choice = st.radio("", list(COLOR_OPTIONS.keys()), horizontal=True, label_visibility="collapsed")
-    bar_color = COLOR_OPTIONS[choice]
-
-    # Visual swatches ONLY (no “Selected option” text)
-    st.markdown(
-        f"""
-        <div style="display:flex;gap:12px;align-items:center;margin-top:6px;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <div style="width:22px;height:22px;border-radius:6px;background:{COLOR_OPTIONS['🟥 Red']};border:1px solid #ddd;"></div>
-            <span style="font-size:13px;">Red</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <div style="width:22px;height:22px;border-radius:6px;background:{COLOR_OPTIONS['🟦 Blue']};border:1px solid #ddd;"></div>
-            <span style="font-size:13px;">Blue</span>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True
+    choice = st.radio(
+        "",
+        list(COLOR_OPTIONS.keys()),
+        horizontal=True,
+        label_visibility="collapsed",
     )
+    bar_color = COLOR_OPTIONS[choice]
 
     dpi = st.selectbox("DPI", [300, 200, 150], index=0)
 
-    # Font size choices: 8 to 12 max
+    # Font size choices: 8 to 12 max (default 10)
     font_pt = st.selectbox("Font size", [8, 9, 10, 11, 12], index=2)
 
     submitted = st.form_submit_button("Generate")
