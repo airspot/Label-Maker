@@ -46,9 +46,10 @@ def fit_text(draw: ImageDraw.ImageDraw, text: str, max_w: int, max_h: int, start
     return load_font(8)
 
 def make_qr(data: str, target_px: int) -> Image.Image:
+    # ✅ More capacity: use LOW error correction
     qr = qrcode.QRCode(
         version=None,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
         box_size=10,
         border=2,
     )
@@ -58,20 +59,17 @@ def make_qr(data: str, target_px: int) -> Image.Image:
     return img.resize((target_px, target_px), resample=Image.Resampling.NEAREST)
 
 # =========================
-# Unified layout (consistent margins/paddings)
+# Unified layout tokens
 # =========================
 def layout_tokens(W: int, H: int):
-    """
-    Returns consistent margins/paddings based on label height (both copper+fiber share H=3.5cm).
-    """
-    outer = int(0.06 * H)            # outer padding all around
-    gap_main = int(0.04 * H)         # main gap (QR <-> rectangles, QR <-> bar)
-    gap_rect = int(0.035 * H)        # gap between stacked rectangles
+    outer = int(0.06 * H)        # outside padding
+    gap_main = int(0.045 * H)    # QR <-> right-panel / QR <-> bar
+    gap_rect = int(0.040 * H)    # gap between stacked pills
     return outer, gap_main, gap_rect
 
-def rounded_radius(h: int) -> int:
-    # consistent "pill" look across all rectangles/bars
-    return max(8, int(0.48 * h))
+def pill_radius(h: int) -> int:
+    # pill-like but not overly round
+    return max(8, int(0.46 * h))
 
 # =========================
 # Renderers
@@ -85,11 +83,8 @@ def render_copper_label(link_name: str, qr_content: str, bar_color: str, dpi: in
     draw = ImageDraw.Draw(img)
 
     outer, gap_main, _ = layout_tokens(W, H)
-
-    # Bar height chosen to visually match fiber rectangles (proportional)
     bar_h = int(0.22 * H)
 
-    # QR zone: above bar, keep same outer margins
     qr_zone_h = (H - 2 * outer) - gap_main - bar_h
     qr_side = min(W - 2 * outer, qr_zone_h)
 
@@ -98,14 +93,12 @@ def render_copper_label(link_name: str, qr_content: str, bar_color: str, dpi: in
     qr_y = outer + (qr_zone_h - qr_side) // 2
     img.alpha_composite(qr_img, (qr_x, qr_y))
 
-    # Bottom pill bar
     bar_x0 = int(0.12 * W)
     bar_x1 = W - int(0.12 * W)
     bar_y1 = H - outer
     bar_y0 = bar_y1 - bar_h
-    draw.rounded_rectangle([(bar_x0, bar_y0), (bar_x1, bar_y1)], radius=rounded_radius(bar_h), fill=bar_color)
+    draw.rounded_rectangle([(bar_x0, bar_y0), (bar_x1, bar_y1)], radius=pill_radius(bar_h), fill=bar_color)
 
-    # Text centered
     max_w = (bar_x1 - bar_x0) - int(0.18 * W)
     max_h = bar_h - int(0.25 * bar_h)
     font = fit_text(draw, link_name, max_w, max_h, start_px=pt_to_px(font_pt, dpi))
@@ -113,8 +106,16 @@ def render_copper_label(link_name: str, qr_content: str, bar_color: str, dpi: in
 
     return img.convert("RGB")
 
+
 def render_fiber_label(qr_content: str, items: list[tuple[str, str]], dpi: int, font_pt: float) -> Image.Image:
-    # Fiber: 5cm x 3.5cm (landscape), no border
+    """
+    Fiber: 5.0cm x 3.5cm (landscape), no border.
+    ✅ Reworked design:
+      - QR has fixed size for ALL fiber labels
+      - Pills have a consistent height "grid" based on 6-slot layout
+      - For 1-unit (3 pills), pills use the SAME height as 2-unit, centered vertically (no giant pills)
+      - Same margins/paddings/spacing between 1-unit and 2-unit
+    """
     W = cm_to_px(5.0, dpi)
     H = cm_to_px(3.5, dpi)
 
@@ -123,30 +124,41 @@ def render_fiber_label(qr_content: str, items: list[tuple[str, str]], dpi: int, 
 
     outer, gap_main, gap_rect = layout_tokens(W, H)
 
-    # IMPORTANT: same QR size for ALL fiber labels (1-unit and 2-unit)
+    # ✅ Same QR size for fiber types
     qr_side = H - 2 * outer
     qr_x0 = outer
     qr_y0 = outer
     img.alpha_composite(make_qr(qr_content, qr_side), (qr_x0, qr_y0))
 
-    # Right panel
+    # Right panel bounds (add small inner inset to make pills look lighter)
     right_x0 = qr_x0 + qr_side + gap_main
     right_x1 = W - outer
-    right_w = right_x1 - right_x0
+    inset = int(0.025 * W)
+    right_x0 += inset
+    right_x1 -= inset
+    right_w = max(1, right_x1 - right_x0)
 
-    n = max(1, len(items))
     usable_h = H - 2 * outer
-    rect_h = int((usable_h - gap_rect * (n - 1)) / n)
-    rect_h = max(rect_h, 18)  # safety
+    n = max(1, len(items))
+
+    # ✅ Key change: pill height is computed from a 6-slot reference grid
+    ref_slots = 6
+    ref_h = int((usable_h - gap_rect * (ref_slots - 1)) / ref_slots)
+    rect_h = max(ref_h, 18)
+
+    # Determine stack height for actual N items and vertically center if N < 6
+    stack_h = n * rect_h + (n - 1) * gap_rect
+    start_y = outer + max(0, (usable_h - stack_h) // 2)
 
     for i, (txt, col) in enumerate(items):
-        y0 = outer + i * (rect_h + gap_rect)
+        y0 = start_y + i * (rect_h + gap_rect)
         y1 = y0 + rect_h
 
-        draw.rounded_rectangle([(right_x0, y0), (right_x1, y1)], radius=rounded_radius(rect_h), fill=col)
+        draw.rounded_rectangle([(right_x0, y0), (right_x1, y1)], radius=pill_radius(rect_h), fill=col)
 
+        # Text
         max_w = right_w - int(0.18 * right_w)
-        max_h = rect_h - int(0.28 * rect_h)
+        max_h = rect_h - int(0.30 * rect_h)
         font = fit_text(draw, txt, max_w, max_h, start_px=pt_to_px(font_pt, dpi))
         draw.text(((right_x0 + right_x1) // 2, (y0 + y1) // 2), txt, font=font, fill="black", anchor="mm")
 
@@ -185,9 +197,10 @@ st.markdown(
         font-weight: 760;
       }}
       .stTextInput > div > div input {{ border-radius: 12px; }}
+      .stTextArea textarea {{ border-radius: 12px !important; }}
       .stSelectbox > div > div {{ border-radius: 12px; }}
 
-      /* Make Generate + Download identical */
+      /* Generate + Download same style */
       .stButton > button, .stDownloadButton > button {{
         background: {PRIMARY_BTN} !important;
         color: white !important;
@@ -207,6 +220,7 @@ st.markdown(
       }}
       .stImage {{ display:flex; justify-content:center; }}
       div[role="radiogroup"] > label {{ margin-right: 16px; }}
+      .hint {{ color:#6b7280; font-size: 12px; margin-top:-6px; }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -214,7 +228,7 @@ st.markdown(
 
 st.markdown('<div class="app-title">EAI Links Label Generator</div>', unsafe_allow_html=True)
 
-# session state
+# Session state
 st.session_state.setdefault("label_img", None)
 st.session_state.setdefault("download_name", "label.png")
 st.session_state.setdefault("dpi", 300)
@@ -235,11 +249,14 @@ with left:
 
     st.divider()
 
+    # ✅ Multiline QR content (at least 6 lines)
+    sample_qr = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6"
+    qr_content = st.text_area("QR Content", value=sample_qr, height=140)
+
     generate_clicked = False
 
     if label_type == "Copper":
         link_name = st.text_input("Link", value="2L3")
-        qr_content = st.text_input("QR Content", value="2L3/D12-43/AE12-43/48P")
 
         st.markdown("**Color**")
         color_choice = st.radio("", ["🟥 Red", "🟦 Blue"], horizontal=True, label_visibility="collapsed")
@@ -250,7 +267,7 @@ with left:
         if generate_clicked:
             img = render_copper_label(
                 link_name.strip(),
-                qr_content.strip(),
+                qr_content,
                 bar_color,
                 dpi=int(dpi),
                 font_pt=float(font_pt),
@@ -260,12 +277,9 @@ with left:
             st.session_state.dpi = int(dpi)
 
     else:
-        qr_content = st.text_input("QR Content", value="FIBER/EXAMPLE/PAYLOAD")
         n_boxes = 3 if label_type == "Fiber (1 unit)" else 6
 
         st.markdown("**Links**")
-
-        # reasonable defaults
         if n_boxes == 6:
             default_texts = ["2L98.1", "2L98.2", "2L98.3", "2L98.4", "2L100.1", "2L100.2"]
             default_cols = [RED, RED, BLUE, BLUE, RED, RED]
@@ -294,7 +308,7 @@ with left:
 
         if generate_clicked:
             img = render_fiber_label(
-                qr_content=qr_content.strip(),
+                qr_content=qr_content,
                 items=items,
                 dpi=int(dpi),
                 font_pt=float(font_pt),
