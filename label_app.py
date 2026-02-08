@@ -8,9 +8,10 @@ from typing import List, Tuple
 # 1. CONFIGURATION & DESIGN TOKENS
 # ==========================================
 class Design:
-    RED = "#FF8095"      
-    BLUE = "#82D8FF"     
-    SOFT_GRAY = "#F1F5F9" # Softest gray for empty links
+    # Colors adjusted for high visibility and black text contrast
+    RED = "#FF4B4B"      
+    BLUE = "#007BFF"     
+    SOFT_GRAY = "#F8FAFC" # Softest gray for empty links
     DARK_TEXT = "#000000"
     WHITE = "#FFFFFF"
     
@@ -18,7 +19,7 @@ class Design:
     FIBER_W, FIBER_H = 5.0, 3.5
     
     APP_TITLE = "Finatech Labeling Tool"
-    PRIMARY_BTN = "#FF4B4B"
+    PRIMARY_BTN = "#1E293B"
 
 # ==========================================
 # 2. UTILITIES & GEOMETRY
@@ -32,13 +33,13 @@ def pt_to_px(pt: float, dpi: int) -> int:
 def get_font(size_px: int) -> ImageFont.FreeTypeFont:
     paths = ["/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", "DejaVuSans-Bold.ttf", "arialbd.ttf"]
     for p in paths:
-        try: return ImageFont.truetype(p, size=max(8, int(size_px)))
+        try: return ImageFont.truetype(p, size=max(6, int(size_px)))
         except: continue
     return ImageFont.load_default()
 
 def fit_text(draw: ImageDraw.ImageDraw, text: str, max_w: int, max_h: int, start_pt: float, dpi: int) -> ImageFont.FreeTypeFont:
     size = pt_to_px(start_pt, dpi)
-    while size >= 6: # Allow shrinking to 6 for small labels
+    while size >= 6:
         font = get_font(size)
         bbox = draw.textbbox((0, 0), text, font=font)
         if (bbox[2] - bbox[0]) <= max_w and (bbox[3] - bbox[1]) <= max_h:
@@ -47,7 +48,6 @@ def fit_text(draw: ImageDraw.ImageDraw, text: str, max_w: int, max_h: int, start
     return get_font(6)
 
 def generate_qr(data: str, size_px: int) -> Image.Image:
-    # Handle empty QR data to avoid errors
     qr_data = data if data.strip() else " "
     qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=1)
     qr.add_data(qr_data)
@@ -70,7 +70,7 @@ def render_copper(link: str, qr_data: str, color: str, dpi: int, font_pt: float)
     pill_h = int(0.22 * H)
     y_start = H - pill_h - padding
     
-    # Use soft gray if no text provided
+    # Soft gray logic for empty text
     fill_color = color if link.strip() else Design.SOFT_GRAY
     
     draw.rounded_rectangle([(padding, y_start), (W - padding, H - padding)], radius=pill_h // 2, fill=fill_color)
@@ -100,7 +100,7 @@ def render_fiber(qr_data: str, items: List[Tuple[str, str]], dpi: int, font_pt: 
     current_y = (H - stack_h) // 2
     
     for text, color in items:
-        # Use soft gray if no text provided
+        # Soft gray logic for empty text
         fill_color = color if text.strip() else Design.SOFT_GRAY
         
         draw.rounded_rectangle([(panel_x0, current_y), (panel_x0 + panel_w, current_y + slot_h)], radius=slot_h // 2, fill=fill_color)
@@ -123,7 +123,7 @@ st.markdown(f"""
     .stApp {{ background-color: #F8FAFC; }}
     [data-testid="stHorizontalBlock"] {{ align-items: center; }}
     
-    /* Preview Frame */
+    /* PREVIEW FRAME */
     .stElementContainer div[data-testid="stVerticalBlock"] > div:has(div.preview-container) {{
         background: #F1F5F9;
         border: 2px dashed #CBD5E1;
@@ -135,14 +135,26 @@ st.markdown(f"""
         min-height: 400px;
     }}
     
-    .stButton > button {{ background-color: {Design.PRIMARY_BTN} !important; border: none !important; }}
+    /* CUSTOM RADIO COLORS FOR CIRCLES */
+    /* Target Red selection */
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-of-type(1) div[role="presentation"] {{
+        background-color: {Design.RED} !important;
+        border-color: {Design.RED} !important;
+    }}
+    /* Target Blue selection */
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-of-type(2) div[role="presentation"] {{
+        background-color: {Design.BLUE} !important;
+        border-color: {Design.BLUE} !important;
+    }}
+
+    .stButton > button {{ background-color: {Design.PRIMARY_BTN} !important; border: none !important; color: white !important; }}
     </style>
 """, unsafe_allow_html=True)
 
 def main():
     st.title(f"🏷️ {Design.APP_TITLE}")
     
-    col_form, col_pre = st.columns([1, 1], gap="large")
+    col_form, col_pre = st.columns([1.1, 1], gap="large")
     
     with col_form:
         with st.container(border=True):
@@ -151,9 +163,9 @@ def main():
             
             c1, c2 = st.columns(2)
             dpi = c1.select_slider("Print Quality (DPI)", options=[150, 300, 600], value=300)
-            f_size = c2.number_input("Font Size (Pt)", value=8) # Default font size 8
+            f_size = c2.number_input("Font Size (Pt)", value=8) 
             
-            qr_text = st.text_area("QR Code Metadata", value="", placeholder="Enter QR data here...", height=80)
+            qr_text = st.text_area("QR Code Metadata", value="", height=80)
 
             st.divider()
             st.subheader("Labeling Cofiguration")
@@ -161,7 +173,7 @@ def main():
             items_to_render = []
             if "Copper" in l_type:
                 r1, r2 = st.columns([2, 1])
-                link = r1.text_input("Link ID", value="") # No default name
+                link = r1.text_input("Link ID", value="") 
                 c_choice = r2.radio("Color", ["Red", "Blue"], horizontal=True)
                 target_color = Design.RED if c_choice == "Red" else Design.BLUE
             else:
