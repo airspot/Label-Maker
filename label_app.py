@@ -2,197 +2,339 @@ import io
 import streamlit as st
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
-from typing import List, Tuple
 
-# ==========================================
-# 1. CONFIGURATION & DESIGN TOKENS
-# ==========================================
-class Design:
-    # Adjusted colors to be slightly lighter so BLACK text is easily readable
-    RED = "#FF8095"      # Soft Red
-    BLUE = "#82D8FF"     # Soft Blue
-    DARK_TEXT = "#000000"
-    BG_LIGHT = "#F1F5F9"
-    WHITE = "#FFFFFF"
-    
-    # Label Dimensions (cm) - Kept exactly as requested
-    COPPER_W, COPPER_H = 2.5, 3.5
-    FIBER_W, FIBER_H = 5.0, 3.5
-    
-    APP_TITLE = "LinkLabel Pro"
-    PRIMARY_BTN = "#4F46E5"
+# =========================
+# Design tokens / constants
+# =========================
+RED = "#E43F6F"
+BLUE = "#008DD5"
+QR_DARK = "#2f2f2f"
+PRIMARY_BTN = "#ff4b4b"
 
-# ==========================================
-# 2. UTILITIES & GEOMETRY
-# ==========================================
+BORDER_COLOR = "#7a7a7a"
+PILL_OUTLINE = "#3a3a3a"
+
+# =========================
+# Helpers: units, fonts, QR
+# =========================
 def cm_to_px(cm: float, dpi: int) -> int:
     return int(round((cm / 2.54) * dpi))
 
 def pt_to_px(pt: float, dpi: int) -> int:
     return int(round((pt * dpi) / 72.0))
 
-def get_font(size_px: int, bold: bool = True) -> ImageFont.FreeTypeFont:
-    paths = [
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+def load_font(size_px: int) -> ImageFont.ImageFont:
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "DejaVuSans-Bold.ttf",
-        "arialbd.ttf",
+        "DejaVuSans.ttf",
+        "arial.ttf",
     ]
-    for p in paths:
+    for p in candidates:
         try:
             return ImageFont.truetype(p, size=max(8, int(size_px)))
-        except:
+        except Exception:
             continue
     return ImageFont.load_default()
 
-def fit_text(draw: ImageDraw.ImageDraw, text: str, max_w: int, max_h: int, start_pt: float, dpi: int) -> ImageFont.FreeTypeFont:
-    size = pt_to_px(start_pt, dpi)
+def fit_text(draw: ImageDraw.ImageDraw, text: str, max_w: int, max_h: int, start_px: int) -> ImageFont.ImageFont:
+    size = int(start_px)
     while size >= 8:
-        font = get_font(size)
-        bbox = draw.textbbox((0, 0), text, font=font)
-        if (bbox[2] - bbox[0]) <= max_w and (bbox[3] - bbox[1]) <= max_h:
+        font = load_font(size)
+        l, t, r, b = draw.textbbox((0, 0), text, font=font)
+        if (r - l) <= max_w and (b - t) <= max_h:
             return font
         size -= 1
-    return get_font(8)
+    return load_font(8)
 
-def generate_qr(data: str, size_px: int) -> Image.Image:
-    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=1)
+def make_qr(data: str, target_px: int) -> Image.Image:
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=2,
+    )
     qr.add_data(data)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="#1E293B", back_color="white").convert("RGBA")
-    return img.resize((size_px, size_px), resample=Image.Resampling.LANCZOS)
+    img = qr.make_image(fill_color=QR_DARK, back_color="white").convert("RGBA")
+    return img.resize((target_px, target_px), resample=Image.Resampling.NEAREST)
 
-# ==========================================
-# 3. CORE RENDERERS
-# ==========================================
-def render_copper(link: str, qr_data: str, color: str, dpi: int, font_pt: float) -> Image.Image:
-    W, H = cm_to_px(Design.COPPER_W, dpi), cm_to_px(Design.COPPER_H, dpi)
-    img = Image.new("RGBA", (W, H), Design.WHITE)
+def pill_radius(h: int) -> int:
+    return max(8, int(0.46 * h))
+
+# =========================
+# Renderers
+# =========================
+def render_copper_label(link_name: str, qr_content: str, bar_color: str, dpi: int, font_pt: float) -> Image.Image:
+    W = cm_to_px(2.5, dpi)
+    H = cm_to_px(3.5, dpi)
+
+    img = Image.new("RGBA", (W, H), "white")
     draw = ImageDraw.Draw(img)
-    padding = int(0.08 * W)
-    
-    qr_size = W - (2 * padding)
-    img.alpha_composite(generate_qr(qr_data, qr_size), (padding, padding))
-    
-    pill_h = int(0.22 * H)
-    y_start = H - pill_h - padding
-    draw.rounded_rectangle([(padding, y_start), (W - padding, H - padding)], radius=pill_h // 2, fill=color)
-    
-    font = fit_text(draw, link, (W - 2*padding) * 0.85, pill_h * 0.7, font_pt, dpi)
-    draw.text((W // 2, y_start + pill_h // 2), link, font=font, fill=Design.DARK_TEXT, anchor="mm")
+
+    outer = int(0.06 * H)
+    gap = int(0.045 * H)
+    bar_h = int(0.22 * H)
+
+    qr_zone_h = (H - 2 * outer) - gap - bar_h
+    qr_side = min(W - 2 * outer, qr_zone_h)
+
+    qr_img = make_qr(qr_content, qr_side)
+    qr_x = outer + ((W - 2 * outer) - qr_side) // 2
+    qr_y = outer + (qr_zone_h - qr_side) // 2
+    img.alpha_composite(qr_img, (qr_x, qr_y))
+
+    bar_x0 = int(0.12 * W)
+    bar_x1 = W - int(0.12 * W)
+    bar_y1 = H - outer
+    bar_y0 = bar_y1 - bar_h
+    draw.rounded_rectangle([(bar_x0, bar_y0), (bar_x1, bar_y1)], radius=pill_radius(bar_h), fill=bar_color)
+
+    max_w = (bar_x1 - bar_x0) - int(0.18 * W)
+    max_h = bar_h - int(0.25 * bar_h)
+    font = fit_text(draw, link_name, max_w, max_h, start_px=pt_to_px(font_pt, dpi))
+    draw.text(((bar_x0 + bar_x1) // 2, (bar_y0 + bar_y1) // 2), link_name, font=font, fill="black", anchor="mm")
+
     return img.convert("RGB")
 
-def render_fiber(qr_data: str, items: List[Tuple[str, str]], dpi: int, font_pt: float) -> Image.Image:
-    W, H = cm_to_px(Design.FIBER_W, dpi), cm_to_px(Design.FIBER_H, dpi)
-    img = Image.new("RGBA", (W, H), Design.WHITE)
+
+def render_fiber_label(qr_content: str, items: list[tuple[str, str]], dpi: int, font_pt: float) -> Image.Image:
+    W = cm_to_px(5.0, dpi)
+    H = cm_to_px(3.5, dpi)
+
+    img = Image.new("RGBA", (W, H), "white")
     draw = ImageDraw.Draw(img)
-    
-    padding = int(0.06 * H)
-    gap = int(0.03 * H)
-    qr_side = H - (2 * padding)
-    img.alpha_composite(generate_qr(qr_data, qr_side), (padding, padding))
-    
-    panel_x0 = qr_side + (2 * padding)
-    panel_w = W - panel_x0 - padding
-    max_slots = 6
-    slot_h = (H - (2 * padding) - (max_slots - 1) * gap) // max_slots
-    
-    stack_h = (len(items) * slot_h) + ((len(items) - 1) * gap)
-    current_y = (H - stack_h) // 2
-    
-    for text, color in items:
-        draw.rounded_rectangle([(panel_x0, current_y), (panel_x0 + panel_w, current_y + slot_h)], radius=slot_h // 2, fill=color)
-        font = fit_text(draw, text, panel_w * 0.85, slot_h * 0.7, font_pt, dpi)
-        draw.text((panel_x0 + panel_w // 2, current_y + slot_h // 2), text, font=font, fill=Design.DARK_TEXT, anchor="mm")
-        current_y += slot_h + gap
-        
+
+    stroke = max(2, int(0.012 * H))
+    inner_stroke = max(2, int(0.010 * H))
+
+    outer = int(0.06 * H)
+    gap_main = int(0.045 * H)
+    gap_rect = int(0.040 * H)
+
+    outer_radius = int(0.10 * H)
+    draw.rounded_rectangle(
+        [(stroke, stroke), (W - stroke, H - stroke)],
+        radius=outer_radius,
+        outline=BORDER_COLOR,
+        width=stroke,
+        fill="white",
+    )
+
+    cx0 = outer + stroke
+    cy0 = outer + stroke
+    cx1 = W - outer - stroke
+    cy1 = H - outer - stroke
+    content_h = cy1 - cy0
+
+    qr_frame_pad = int(0.015 * H)
+    qr_frame_radius = int(0.09 * H)
+    qr_side = content_h
+
+    qr_frame_x0 = cx0
+    qr_frame_y0 = cy0
+    qr_frame_x1 = qr_frame_x0 + qr_side
+    qr_frame_y1 = cy1
+
+    draw.rounded_rectangle(
+        [(qr_frame_x0, qr_frame_y0), (qr_frame_x1, qr_frame_y1)],
+        radius=qr_frame_radius,
+        outline=BORDER_COLOR,
+        width=inner_stroke,
+        fill="white",
+    )
+
+    qr_target = qr_side - 2 * qr_frame_pad - inner_stroke
+    qr_img = make_qr(qr_content, qr_target)
+    qr_x = qr_frame_x0 + (qr_side - qr_target) // 2
+    qr_y = qr_frame_y0 + (content_h - qr_target) // 2
+    img.alpha_composite(qr_img, (qr_x, qr_y))
+
+    right_x0 = qr_frame_x1 + gap_main
+    right_x1 = cx1
+    inset = int(0.02 * W)
+    right_x0 += inset
+    right_x1 -= inset
+    right_w = max(1, right_x1 - right_x0)
+
+    n = max(1, len(items))
+    ref_slots = 6
+    rect_h_ref = int((content_h - gap_rect * (ref_slots - 1)) / ref_slots)
+    rect_h = max(rect_h_ref, int(0.12 * H))
+
+    stack_h = n * rect_h + (n - 1) * gap_rect
+    start_y = cy0 + max(0, (content_h - stack_h) // 2)
+
+    for i, (txt, col) in enumerate(items):
+        y0 = start_y + i * (rect_h + gap_rect)
+        y1 = y0 + rect_h
+
+        draw.rounded_rectangle(
+            [(right_x0, y0), (right_x1, y1)],
+            radius=pill_radius(rect_h),
+            fill=col,
+            outline=PILL_OUTLINE,
+            width=max(2, int(0.006 * H)),
+        )
+
+        max_w = right_w - int(0.18 * right_w)
+        max_h = rect_h - int(0.30 * rect_h)
+        font = fit_text(draw, txt, max_w, max_h, start_px=pt_to_px(font_pt, dpi))
+        draw.text(((right_x0 + right_x1) // 2, (y0 + y1) // 2), txt, font=font, fill="black", anchor="mm")
+
     return img.convert("RGB")
 
-# ==========================================
-# 4. STREAMLIT UI
-# ==========================================
-st.set_page_config(page_title=Design.APP_TITLE, layout="wide")
 
-st.markdown(f"""
+# =========================
+# Streamlit UI
+# =========================
+st.set_page_config(page_title="LinkLabel Pro", layout="wide")
+
+st.markdown(
+    f"""
     <style>
-    .stApp {{ background-color: #F8FAFC; }}
-    .main-container {{
-        padding: 2rem;
-        background: white;
-        border-radius: 12px;
-        border: 1px solid #E2E8F0;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }}
-    .preview-card {{
-        background: #F1F5F9;
-        border: 2px dashed #CBD5E1;
-        border-radius: 12px;
+      .block-container {{
+        padding-top: 1.0rem;
+        padding-bottom: 2.0rem;
+        max-width: 1400px;
+      }}
+
+      .card {{
+        border: 1px solid rgba(229,231,235,1);
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 18px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      }}
+
+      .stButton > button, .stDownloadButton > button {{
+        background: {PRIMARY_BTN} !important;
+        color: white !important;
+        border: 1px solid {PRIMARY_BTN} !important;
+        border-radius: 12px !important;
+        padding: 0.70rem 1.05rem !important;
+        font-weight: 720 !important;
+      }}
+
+      /* ✅ Real preview area styling (applied to a Streamlit container) */
+      [data-testid="stVerticalBlock"] .preview-box {{
+        border: 1px dashed rgba(148,163,184,0.85);
+        background: rgba(248,250,252,1);
+        border-radius: 14px;
+        padding: 16px;
+        min-height: 360px;
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 40px;
-        min-height: 400px;
-    }}
-    /* Align buttons and text */
-    div[data-testid="stHorizontalBlock"] {{
-        align-items: center;
-    }}
-    h1 {{ color: #1E293B; font-weight: 800; }}
+        overflow: hidden;
+      }}
+
+      .preview-box img {{
+        max-width: 100%;
+        height: auto;
+        display: block;
+      }}
     </style>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
 
-def main():
-    st.title(f"🏷️ {Design.APP_TITLE}")
-    
-    col_form, col_pre = st.columns([1.1, 1], gap="large")
-    
-    with col_form:
-        with st.container(border=True):
-            st.subheader("Global Settings")
-            l_type = st.selectbox("Label Type", ["Copper", "Fiber 1 Unit", "Fiber 2 Unit"])
-            c1, c2 = st.columns(2)
-            dpi = c1.select_slider("DPI", options=[150, 300, 600], value=300)
-            f_size = c2.number_input("Font Pt", value=10)
-            qr_text = st.text_area("QR Content", "LINK_ID: 001\nTYPE: EAI_OPTIC", height=80)
+st.markdown("### 🏷️ LinkLabel Pro")
 
-            st.divider()
-            st.subheader("Link Configuration")
-            
-            items_to_render = []
-            if "Copper" in l_type:
-                r1, r2 = st.columns([1, 1])
-                link = r1.text_input("Link ID", "2L3")
-                c_choice = r2.radio("Color", ["Red", "Blue"], horizontal=True)
-                target_color = Design.RED if c_choice == "Red" else Design.BLUE
-            else:
-                n = 3 if "1 Unit" in l_type else 6
-                for i in range(n):
-                    r1, r2 = st.columns([1, 1])
-                    t = r1.text_input(f"ID {i+1}", f"L{i+1}", key=f"t{i}", label_visibility="collapsed")
-                    c = r2.radio(f"Col {i+1}", ["Red", "Blue"], key=f"c{i}", horizontal=True, label_visibility="collapsed")
-                    items_to_render.append((t, Design.RED if c == "Red" else Design.BLUE))
+st.session_state.setdefault("label_img", None)
+st.session_state.setdefault("download_name", "label.png")
+st.session_state.setdefault("dpi", 300)
 
-            generate = st.button("Generate Label", use_container_width=True, type="primary")
+left, right = st.columns([1.1, 1.0], gap="large")
 
-    with col_pre:
-        st.subheader("Label Preview")
-        if generate:
-            if "Copper" in l_type:
-                final_img = render_copper(link, qr_text, target_color, dpi, f_size)
-                fname = f"copper_{link}.png"
-            else:
-                final_img = render_fiber(qr_text, items_to_render, dpi, f_size)
-                fname = "fiber_label.png"
-            
-            st.markdown('<div class="preview-card">', unsafe_allow_html=True)
-            st.image(final_img)
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            buf = io.BytesIO()
-            final_img.save(buf, format="PNG", dpi=(dpi, dpi))
-            st.download_button("Download PNG", buf.getvalue(), fname, "image/png", use_container_width=True)
+# ---------------- LEFT ----------------
+with left:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.subheader("Global Settings")
+
+    label_type = st.selectbox("Label Type", ["Copper", "Fiber 1 Unit", "Fiber 2 Unit"], index=2)
+
+    cA, cB = st.columns([1.2, 1.0])
+    with cA:
+        dpi = st.slider("DPI", 150, 300, 300, step=10)
+    with cB:
+        font_pt = st.number_input("Font Pt", min_value=8, max_value=12, value=10, step=1)
+
+    qr_default = "LINK_ID: 001\nTYPE: EAI_OPTIC\nFROM: RACK-A\nTO: RACK-B\nPANEL: 1\nPORTS: 1-2"
+    qr_content = st.text_area("QR Content", value=qr_default, height=120)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown('<div class="card" style="margin-top:14px;">', unsafe_allow_html=True)
+    st.subheader("Link Configuration")
+
+    if label_type == "Copper":
+        link_name = st.text_input("Link", value="2L3")
+        color_choice = st.radio("Color", ["🟥 Red", "🟦 Blue"], horizontal=True)
+        bar_color = RED if "Red" in color_choice else BLUE
+
+        if st.button("Generate Label", use_container_width=True):
+            img = render_copper_label(link_name.strip(), qr_content, bar_color, int(dpi), float(font_pt))
+            st.session_state.label_img = img
+            st.session_state.download_name = f"{(link_name.strip() or 'label')}.png"
+            st.session_state.dpi = int(dpi)
+
+    else:
+        n_boxes = 3 if label_type == "Fiber 1 Unit" else 6
+
+        default_texts = ["L1", "L2", "L3"] if n_boxes == 3 else ["2L98.1", "2L98.2", "2L98.3", "2L98.4", "2L100.1", "2L100.2"]
+        default_cols = [RED, BLUE, RED] if n_boxes == 3 else [RED, RED, BLUE, BLUE, RED, RED]
+
+        items = []
+        for i in range(n_boxes):
+            r1, r2 = st.columns([2.2, 1.0])
+            with r1:
+                txt = st.text_input(f"L{i+1}", value=default_texts[i])
+            with r2:
+                pick = st.radio(
+                    f"Color {i+1}",
+                    ["🟥", "🟦"],
+                    horizontal=True,
+                    label_visibility="collapsed",
+                    index=0 if default_cols[i] == RED else 1,
+                    key=f"fiber_col_{i}",
+                )
+                col = RED if pick == "🟥" else BLUE
+            items.append((txt.strip(), col))
+
+        if st.button("Generate Label", use_container_width=True):
+            img = render_fiber_label(qr_content=qr_content, items=items, dpi=int(dpi), font_pt=float(font_pt))
+            st.session_state.label_img = img
+            base = (items[0][0] if items and items[0][0] else "fiber_label")
+            st.session_state.download_name = f"{base}.png"
+            st.session_state.dpi = int(dpi)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ---------------- RIGHT ----------------
+with right:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.subheader("Label Preview")
+
+    # ✅ This is now a REAL Streamlit container that we can style
+    preview_container = st.container()
+    with preview_container:
+        st.markdown('<div class="preview-box">', unsafe_allow_html=True)
+        if st.session_state.label_img is None:
+            st.markdown("<span style='color:#64748b;'>Generate a label to preview it here.</span>", unsafe_allow_html=True)
         else:
-            st.markdown('<div class="preview-card">Click Generate to preview</div>', unsafe_allow_html=True)
+            st.image(st.session_state.label_img, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-if __name__ == "__main__":
-    main()
+    if st.session_state.label_img is not None:
+        buf = io.BytesIO()
+        st.session_state.label_img.save(buf, format="PNG", dpi=(st.session_state.dpi, st.session_state.dpi))
+        st.download_button(
+            "Download PNG",
+            data=buf.getvalue(),
+            file_name=st.session_state.download_name,
+            mime="image/png",
+            use_container_width=True,
+        )
+
+    st.markdown("</div>", unsafe_allow_html=True)
