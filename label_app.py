@@ -8,19 +8,16 @@ from typing import List, Tuple
 # 1. CONFIGURATION & DESIGN TOKENS
 # ==========================================
 class Design:
-    # Adjusted colors to be slightly lighter so BLACK text is easily readable
-    RED = "#FF8095"      # Soft Red
-    BLUE = "#82D8FF"     # Soft Blue
+    RED = "#FF8095"      # High-contrast Soft Red
+    BLUE = "#82D8FF"     # High-contrast Soft Blue
     DARK_TEXT = "#000000"
-    BG_LIGHT = "#F1F5F9"
     WHITE = "#FFFFFF"
     
-    # Label Dimensions (cm) - Kept exactly as requested
     COPPER_W, COPPER_H = 2.5, 3.5
     FIBER_W, FIBER_H = 5.0, 3.5
     
     APP_TITLE = "LinkLabel Pro"
-    PRIMARY_BTN = "#4F46E5"
+    PRIMARY_BTN = "#FF4B4B"
 
 # ==========================================
 # 2. UTILITIES & GEOMETRY
@@ -31,17 +28,12 @@ def cm_to_px(cm: float, dpi: int) -> int:
 def pt_to_px(pt: float, dpi: int) -> int:
     return int(round((pt * dpi) / 72.0))
 
-def get_font(size_px: int, bold: bool = True) -> ImageFont.FreeTypeFont:
-    paths = [
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        "DejaVuSans-Bold.ttf",
-        "arialbd.ttf",
-    ]
+def get_font(size_px: int) -> ImageFont.FreeTypeFont:
+    # Reliable font loading for different environments
+    paths = ["/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", "DejaVuSans-Bold.ttf", "arialbd.ttf"]
     for p in paths:
-        try:
-            return ImageFont.truetype(p, size=max(8, int(size_px)))
-        except:
-            continue
+        try: return ImageFont.truetype(p, size=max(8, int(size_px)))
+        except: continue
     return ImageFont.load_default()
 
 def fit_text(draw: ImageDraw.ImageDraw, text: str, max_w: int, max_h: int, start_pt: float, dpi: int) -> ImageFont.FreeTypeFont:
@@ -112,39 +104,39 @@ def render_fiber(qr_data: str, items: List[Tuple[str, str]], dpi: int, font_pt: 
 # ==========================================
 st.set_page_config(page_title=Design.APP_TITLE, layout="wide")
 
+# Enhanced CSS for vertical alignment and framing
 st.markdown(f"""
     <style>
     .stApp {{ background-color: #F8FAFC; }}
-    .main-container {{
-        padding: 2rem;
-        background: white;
-        border-radius: 12px;
-        border: 1px solid #E2E8F0;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    
+    /* Center text and radio vertically in link rows */
+    [data-testid="stHorizontalBlock"] {{
+        align-items: center;
     }}
-    .preview-card {{
+
+    /* Custom Preview Container Styling */
+    .stElementContainer div[data-testid="stVerticalBlock"] > div:has(div.preview-container) {{
         background: #F1F5F9;
         border: 2px dashed #CBD5E1;
         border-radius: 12px;
+        padding: 2rem;
         display: flex;
-        flex-direction: column;
-        align-items: center;
         justify-content: center;
-        padding: 40px;
+        align-items: center;
         min-height: 400px;
     }}
-    /* Align buttons and text */
-    div[data-testid="stHorizontalBlock"] {{
-        align-items: center;
+    
+    .stButton > button {{
+        background-color: {Design.PRIMARY_BTN} !important;
+        border: none !important;
     }}
-    h1 {{ color: #1E293B; font-weight: 800; }}
     </style>
 """, unsafe_allow_html=True)
 
 def main():
     st.title(f"🏷️ {Design.APP_TITLE}")
     
-    col_form, col_pre = st.columns([1.1, 1], gap="large")
+    col_form, col_pre = st.columns([1, 1], gap="large")
     
     with col_form:
         with st.container(border=True):
@@ -160,14 +152,14 @@ def main():
             
             items_to_render = []
             if "Copper" in l_type:
-                r1, r2 = st.columns([1, 1])
+                r1, r2 = st.columns([2, 1])
                 link = r1.text_input("Link ID", "2L3")
                 c_choice = r2.radio("Color", ["Red", "Blue"], horizontal=True)
                 target_color = Design.RED if c_choice == "Red" else Design.BLUE
             else:
                 n = 3 if "1 Unit" in l_type else 6
                 for i in range(n):
-                    r1, r2 = st.columns([1, 1])
+                    r1, r2 = st.columns([2, 1]) # Better spacing for text vs radios
                     t = r1.text_input(f"ID {i+1}", f"L{i+1}", key=f"t{i}", label_visibility="collapsed")
                     c = r2.radio(f"Col {i+1}", ["Red", "Blue"], key=f"c{i}", horizontal=True, label_visibility="collapsed")
                     items_to_render.append((t, Design.RED if c == "Red" else Design.BLUE))
@@ -176,23 +168,29 @@ def main():
 
     with col_pre:
         st.subheader("Label Preview")
-        if generate:
-            if "Copper" in l_type:
-                final_img = render_copper(link, qr_text, target_color, dpi, f_size)
-                fname = f"copper_{link}.png"
+        # We use a container to act as the visual frame
+        preview_placeholder = st.container()
+        
+        with preview_placeholder:
+            # Invisible marker for the CSS to target this specific container
+            st.markdown('<div class="preview-container"></div>', unsafe_allow_html=True)
+            
+            if generate:
+                if "Copper" in l_type:
+                    final_img = render_copper(link, qr_text, target_color, dpi, f_size)
+                    fname = f"copper_{link}.png"
+                else:
+                    final_img = render_fiber(qr_text, items_to_render, dpi, f_size)
+                    fname = "fiber_label.png"
+                
+                # Image is now nested inside the preview_placeholder container
+                st.image(final_img, use_container_width=False)
+                
+                buf = io.BytesIO()
+                final_img.save(buf, format="PNG", dpi=(dpi, dpi))
+                st.download_button("Download PNG", buf.getvalue(), fname, "image/png", use_container_width=True)
             else:
-                final_img = render_fiber(qr_text, items_to_render, dpi, f_size)
-                fname = "fiber_label.png"
-            
-            st.markdown('<div class="preview-card">', unsafe_allow_html=True)
-            st.image(final_img)
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            buf = io.BytesIO()
-            final_img.save(buf, format="PNG", dpi=(dpi, dpi))
-            st.download_button("Download PNG", buf.getvalue(), fname, "image/png", use_container_width=True)
-        else:
-            st.markdown('<div class="preview-card">Click Generate to preview</div>', unsafe_allow_html=True)
+                st.write("Click **Generate Label** to see the preview here.")
 
 if __name__ == "__main__":
     main()
