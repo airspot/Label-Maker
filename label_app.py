@@ -11,6 +11,10 @@ BLUE = "#008DD5"
 QR_DARK = "#2f2f2f"
 PRIMARY_BTN = "#ff4b4b"
 
+# Fiber border look (like your image)
+BORDER_COLOR = "#7a7a7a"
+PILL_OUTLINE = "#3a3a3a"
+
 # =========================
 # Helpers: units, fonts, QR
 # =========================
@@ -46,7 +50,7 @@ def fit_text(draw: ImageDraw.ImageDraw, text: str, max_w: int, max_h: int, start
     return load_font(8)
 
 def make_qr(data: str, target_px: int) -> Image.Image:
-    # ✅ More capacity: use LOW error correction
+    # Higher capacity for multi-line content
     qr = qrcode.QRCode(
         version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -59,16 +63,9 @@ def make_qr(data: str, target_px: int) -> Image.Image:
     return img.resize((target_px, target_px), resample=Image.Resampling.NEAREST)
 
 # =========================
-# Unified layout tokens
+# Layout helpers
 # =========================
-def layout_tokens(W: int, H: int):
-    outer = int(0.06 * H)        # outside padding
-    gap_main = int(0.045 * H)    # QR <-> right-panel / QR <-> bar
-    gap_rect = int(0.040 * H)    # gap between stacked pills
-    return outer, gap_main, gap_rect
-
 def pill_radius(h: int) -> int:
-    # pill-like but not overly round
     return max(8, int(0.46 * h))
 
 # =========================
@@ -82,10 +79,11 @@ def render_copper_label(link_name: str, qr_content: str, bar_color: str, dpi: in
     img = Image.new("RGBA", (W, H), "white")
     draw = ImageDraw.Draw(img)
 
-    outer, gap_main, _ = layout_tokens(W, H)
+    outer = int(0.06 * H)
+    gap = int(0.045 * H)
     bar_h = int(0.22 * H)
 
-    qr_zone_h = (H - 2 * outer) - gap_main - bar_h
+    qr_zone_h = (H - 2 * outer) - gap - bar_h
     qr_side = min(W - 2 * outer, qr_zone_h)
 
     qr_img = make_qr(qr_content, qr_side)
@@ -109,12 +107,12 @@ def render_copper_label(link_name: str, qr_content: str, bar_color: str, dpi: in
 
 def render_fiber_label(qr_content: str, items: list[tuple[str, str]], dpi: int, font_pt: float) -> Image.Image:
     """
-    Fiber: 5.0cm x 3.5cm (landscape), no border.
-    ✅ Reworked design:
-      - QR has fixed size for ALL fiber labels
-      - Pills have a consistent height "grid" based on 6-slot layout
-      - For 1-unit (3 pills), pills use the SAME height as 2-unit, centered vertically (no giant pills)
-      - Same margins/paddings/spacing between 1-unit and 2-unit
+    Fiber: 5.0cm x 3.5cm (landscape)
+    ✅ Draw borders + alignment like your reference image:
+      - Outer rounded border
+      - Inner rounded border around the QR area
+      - Pills with outline
+      - Pills sizing based on 6-slot grid (so 1-unit doesn't look huge)
     """
     W = cm_to_px(5.0, dpi)
     H = cm_to_px(3.5, dpi)
@@ -122,47 +120,101 @@ def render_fiber_label(qr_content: str, items: list[tuple[str, str]], dpi: int, 
     img = Image.new("RGBA", (W, H), "white")
     draw = ImageDraw.Draw(img)
 
-    outer, gap_main, gap_rect = layout_tokens(W, H)
+    # Border thickness scales with DPI
+    stroke = max(2, int(0.012 * H))       # outer border stroke
+    inner_stroke = max(2, int(0.010 * H)) # QR frame stroke
 
-    # ✅ Same QR size for fiber types
-    qr_side = H - 2 * outer
-    qr_x0 = outer
-    qr_y0 = outer
-    img.alpha_composite(make_qr(qr_content, qr_side), (qr_x0, qr_y0))
+    # Outer padding leaves room for outer border
+    outer = int(0.06 * H)
+    gap_main = int(0.045 * H)
+    gap_rect = int(0.040 * H)
 
-    # Right panel bounds (add small inner inset to make pills look lighter)
-    right_x0 = qr_x0 + qr_side + gap_main
-    right_x1 = W - outer
-    inset = int(0.025 * W)
+    # Outer rounded border (like the big border in your image)
+    outer_radius = int(0.10 * H)
+    draw.rounded_rectangle(
+        [(stroke, stroke), (W - stroke, H - stroke)],
+        radius=outer_radius,
+        outline=BORDER_COLOR,
+        width=stroke,
+        fill="white",
+    )
+
+    # Content bounds inside outer border
+    cx0 = outer + stroke
+    cy0 = outer + stroke
+    cx1 = W - outer - stroke
+    cy1 = H - outer - stroke
+    content_w = cx1 - cx0
+    content_h = cy1 - cy0
+
+    # QR area frame (second rounded border around QR)
+    qr_frame_pad = int(0.015 * H)       # padding between frame and QR
+    qr_frame_radius = int(0.09 * H)
+
+    qr_side = content_h  # square as tall as usable height
+    qr_frame_x0 = cx0
+    qr_frame_y0 = cy0
+    qr_frame_x1 = qr_frame_x0 + qr_side
+    qr_frame_y1 = cy1
+
+    # Draw QR frame
+    draw.rounded_rectangle(
+        [(qr_frame_x0, qr_frame_y0), (qr_frame_x1, qr_frame_y1)],
+        radius=qr_frame_radius,
+        outline=BORDER_COLOR,
+        width=inner_stroke,
+        fill="white",
+    )
+
+    # Place QR inside the frame with padding
+    qr_target = qr_side - 2 * qr_frame_pad - inner_stroke
+    qr_img = make_qr(qr_content, qr_target)
+    qr_x = qr_frame_x0 + (qr_side - qr_target) // 2
+    qr_y = qr_frame_y0 + (content_h - qr_target) // 2
+    img.alpha_composite(qr_img, (qr_x, qr_y))
+
+    # Right panel area (aligned like your image)
+    right_x0 = qr_frame_x1 + gap_main
+    right_x1 = cx1
+    right_w = max(1, right_x1 - right_x0)
+
+    # Slight inset so pills aren't touching right area edges
+    inset = int(0.02 * W)
     right_x0 += inset
     right_x1 -= inset
     right_w = max(1, right_x1 - right_x0)
 
-    usable_h = H - 2 * outer
     n = max(1, len(items))
 
-    # ✅ Key change: pill height is computed from a 6-slot reference grid
+    # Reference sizing based on 6 slots (so 3-slot doesn't become huge)
     ref_slots = 6
-    ref_h = int((usable_h - gap_rect * (ref_slots - 1)) / ref_slots)
-    rect_h = max(ref_h, 18)
+    rect_h_ref = int((content_h - gap_rect * (ref_slots - 1)) / ref_slots)
+    rect_h = max(rect_h_ref, int(0.12 * H))
 
-    # Determine stack height for actual N items and vertically center if N < 6
     stack_h = n * rect_h + (n - 1) * gap_rect
-    start_y = outer + max(0, (usable_h - stack_h) // 2)
+    start_y = cy0 + max(0, (content_h - stack_h) // 2)
 
     for i, (txt, col) in enumerate(items):
         y0 = start_y + i * (rect_h + gap_rect)
         y1 = y0 + rect_h
 
-        draw.rounded_rectangle([(right_x0, y0), (right_x1, y1)], radius=pill_radius(rect_h), fill=col)
+        # Pill with outline (like your image)
+        draw.rounded_rectangle(
+            [(right_x0, y0), (right_x1, y1)],
+            radius=pill_radius(rect_h),
+            fill=col,
+            outline=PILL_OUTLINE,
+            width=max(2, int(0.006 * H)),
+        )
 
-        # Text
+        # Center text
         max_w = right_w - int(0.18 * right_w)
         max_h = rect_h - int(0.30 * rect_h)
         font = fit_text(draw, txt, max_w, max_h, start_px=pt_to_px(font_pt, dpi))
         draw.text(((right_x0 + right_x1) // 2, (y0 + y1) // 2), txt, font=font, fill="black", anchor="mm")
 
     return img.convert("RGB")
+
 
 # =========================
 # Streamlit UI (modern + adaptive)
@@ -220,7 +272,6 @@ st.markdown(
       }}
       .stImage {{ display:flex; justify-content:center; }}
       div[role="radiogroup"] > label {{ margin-right: 16px; }}
-      .hint {{ color:#6b7280; font-size: 12px; margin-top:-6px; }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -228,7 +279,6 @@ st.markdown(
 
 st.markdown('<div class="app-title">EAI Links Label Generator</div>', unsafe_allow_html=True)
 
-# Session state
 st.session_state.setdefault("label_img", None)
 st.session_state.setdefault("download_name", "label.png")
 st.session_state.setdefault("dpi", 300)
@@ -249,11 +299,9 @@ with left:
 
     st.divider()
 
-    # ✅ Multiline QR content (at least 6 lines)
+    # Multiline QR content (6+ lines)
     sample_qr = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6"
     qr_content = st.text_area("QR Content", value=sample_qr, height=140)
-
-    generate_clicked = False
 
     if label_type == "Copper":
         link_name = st.text_input("Link", value="2L3")
@@ -262,16 +310,8 @@ with left:
         color_choice = st.radio("", ["🟥 Red", "🟦 Blue"], horizontal=True, label_visibility="collapsed")
         bar_color = RED if "Red" in color_choice else BLUE
 
-        generate_clicked = st.button("Generate", use_container_width=True)
-
-        if generate_clicked:
-            img = render_copper_label(
-                link_name.strip(),
-                qr_content,
-                bar_color,
-                dpi=int(dpi),
-                font_pt=float(font_pt),
-            )
+        if st.button("Generate", use_container_width=True):
+            img = render_copper_label(link_name.strip(), qr_content, bar_color, int(dpi), float(font_pt))
             st.session_state.label_img = img
             st.session_state.download_name = f"{(link_name.strip() or 'label')}.png"
             st.session_state.dpi = int(dpi)
@@ -304,15 +344,8 @@ with left:
                 col = RED if col_pick == "🟥" else BLUE
             items.append((txt.strip(), col))
 
-        generate_clicked = st.button("Generate", use_container_width=True)
-
-        if generate_clicked:
-            img = render_fiber_label(
-                qr_content=qr_content,
-                items=items,
-                dpi=int(dpi),
-                font_pt=float(font_pt),
-            )
+        if st.button("Generate", use_container_width=True):
+            img = render_fiber_label(qr_content=qr_content, items=items, dpi=int(dpi), font_pt=float(font_pt))
             st.session_state.label_img = img
             base = (items[0][0] if items and items[0][0] else "fiber_label")
             st.session_state.download_name = f"{base}.png"
