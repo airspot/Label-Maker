@@ -8,21 +8,22 @@ from typing import List, Tuple
 # 1. CONFIGURATION & DESIGN TOKENS
 # ==========================================
 class Design:
-    # Colors adjusted for high visibility and black text contrast
+    # Branding Colors
     RED = "#FF4B4B"      
     BLUE = "#007BFF"     
-    SOFT_GRAY = "#F8FAFC" # Softest gray for empty links
+    SOFT_GRAY = "#F1F5F9" # Light gray for empty fields
     DARK_TEXT = "#000000"
     WHITE = "#FFFFFF"
     
+    # Label Sizes (Fixed as requested)
     COPPER_W, COPPER_H = 2.5, 3.5
     FIBER_W, FIBER_H = 5.0, 3.5
     
     APP_TITLE = "Finatech Labeling Tool"
-    PRIMARY_BTN = "#1E293B"
+    PRIMARY_COLOR = "#FF4B4B" # Red is the default primary
 
 # ==========================================
-# 2. UTILITIES & GEOMETRY
+# 2. CORE RENDERING ENGINE
 # ==========================================
 def cm_to_px(cm: float, dpi: int) -> int:
     return int(round((cm / 2.54) * dpi))
@@ -55,24 +56,19 @@ def generate_qr(data: str, size_px: int) -> Image.Image:
     img = qr.make_image(fill_color="#1E293B", back_color="white").convert("RGBA")
     return img.resize((size_px, size_px), resample=Image.Resampling.LANCZOS)
 
-# ==========================================
-# 3. CORE RENDERERS
-# ==========================================
 def render_copper(link: str, qr_data: str, color: str, dpi: int, font_pt: float) -> Image.Image:
     W, H = cm_to_px(Design.COPPER_W, dpi), cm_to_px(Design.COPPER_H, dpi)
     img = Image.new("RGBA", (W, H), Design.WHITE)
     draw = ImageDraw.Draw(img)
     padding = int(0.08 * W)
     
-    qr_size = W - (2 * padding)
-    img.alpha_composite(generate_qr(qr_data, qr_size), (padding, padding))
+    img.alpha_composite(generate_qr(qr_data, W - (2 * padding)), (padding, padding))
     
     pill_h = int(0.22 * H)
     y_start = H - pill_h - padding
     
-    # Soft gray logic for empty text
+    # "Soft Gray" logic: if text is empty, fill with gray regardless of radio selection
     fill_color = color if link.strip() else Design.SOFT_GRAY
-    
     draw.rounded_rectangle([(padding, y_start), (W - padding, H - padding)], radius=pill_h // 2, fill=fill_color)
     
     if link.strip():
@@ -86,8 +82,7 @@ def render_fiber(qr_data: str, items: List[Tuple[str, str]], dpi: int, font_pt: 
     img = Image.new("RGBA", (W, H), Design.WHITE)
     draw = ImageDraw.Draw(img)
     
-    padding = int(0.06 * H)
-    gap = int(0.03 * H)
+    padding, gap = int(0.06 * H), int(0.03 * H)
     qr_side = H - (2 * padding)
     img.alpha_composite(generate_qr(qr_data, qr_side), (padding, padding))
     
@@ -100,21 +95,19 @@ def render_fiber(qr_data: str, items: List[Tuple[str, str]], dpi: int, font_pt: 
     current_y = (H - stack_h) // 2
     
     for text, color in items:
-        # Soft gray logic for empty text
+        # "Soft Gray" logic for empty fiber items
         fill_color = color if text.strip() else Design.SOFT_GRAY
-        
         draw.rounded_rectangle([(panel_x0, current_y), (panel_x0 + panel_w, current_y + slot_h)], radius=slot_h // 2, fill=fill_color)
         
         if text.strip():
             font = fit_text(draw, text, panel_w * 0.85, slot_h * 0.7, font_pt, dpi)
             draw.text((panel_x0 + panel_w // 2, current_y + slot_h // 2), text, font=font, fill=Design.DARK_TEXT, anchor="mm")
-            
         current_y += slot_h + gap
         
     return img.convert("RGB")
 
 # ==========================================
-# 4. STREAMLIT UI
+# 3. STREAMLIT INTERFACE & STYLING
 # ==========================================
 st.set_page_config(page_title=Design.APP_TITLE, layout="wide")
 
@@ -123,31 +116,38 @@ st.markdown(f"""
     .stApp {{ background-color: #F8FAFC; }}
     [data-testid="stHorizontalBlock"] {{ align-items: center; }}
     
-    /* PREVIEW FRAME */
+    /* PREVIEW CONTAINER */
     .stElementContainer div[data-testid="stVerticalBlock"] > div:has(div.preview-container) {{
         background: #F1F5F9;
         border: 2px dashed #CBD5E1;
         border-radius: 12px;
         padding: 2rem;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 400px;
+        display: flex; justify-content: center; align-items: center; min-height: 400px;
+    }}
+
+    /* --- RADIO BUTTON CIRCLE COLORS --- */
+    /* Target the dot when 'Blue' (the 2nd option) is selected */
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-of-type(2) div[data-testid="stMarkdownContainer"] p {{
+        color: {Design.BLUE};
     }}
     
-    /* CUSTOM RADIO COLORS FOR CIRCLES */
-    /* Target Red selection */
-    div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-of-type(1) div[role="presentation"] {{
-        background-color: {Design.RED} !important;
-        border-color: {Design.RED} !important;
+    /* Force the Blue circle color when selected */
+    div[data-testid="stRadio"] div[role="radiogroup"] label:nth-of-type(2) div[role="presentation"] {{
+        background-color: transparent !important;
     }}
-    /* Target Blue selection */
-    div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-of-type(2) div[role="presentation"] {{
+    
+    div[data-testid="stRadio"] div[role="radiogroup"] label:nth-of-type(2) input:checked + div[role="presentation"] {{
         background-color: {Design.BLUE} !important;
         border-color: {Design.BLUE} !important;
     }}
 
-    .stButton > button {{ background-color: {Design.PRIMARY_BTN} !important; border: none !important; color: white !important; }}
+    /* Target the dot when 'Red' (the 1st option) is selected */
+    div[data-testid="stRadio"] div[role="radiogroup"] label:nth-of-type(1) input:checked + div[role="presentation"] {{
+        background-color: {Design.RED} !important;
+        border-color: {Design.RED} !important;
+    }}
+
+    .stButton > button {{ background-color: #1E293B !important; color: white !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -163,7 +163,7 @@ def main():
             
             c1, c2 = st.columns(2)
             dpi = c1.select_slider("Print Quality (DPI)", options=[150, 300, 600], value=300)
-            f_size = c2.number_input("Font Size (Pt)", value=8) 
+            f_size = c2.number_input("Font Size (Pt)", value=8) # Default font size 8
             
             qr_text = st.text_area("QR Code Metadata", value="", height=80)
 
@@ -173,8 +173,8 @@ def main():
             items_to_render = []
             if "Copper" in l_type:
                 r1, r2 = st.columns([2, 1])
-                link = r1.text_input("Link ID", value="") 
-                c_choice = r2.radio("Color", ["Red", "Blue"], horizontal=True)
+                link = r1.text_input("Link ID", value="") # No placeholder/default
+                c_choice = r2.radio("Color", ["Red", "Blue"], horizontal=True, key="copper_color")
                 target_color = Design.RED if c_choice == "Red" else Design.BLUE
             else:
                 n = 3 if "1 Unit" in l_type else 6
