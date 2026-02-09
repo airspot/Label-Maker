@@ -9,8 +9,8 @@ from typing import List, Tuple
 # ==========================================
 class Design:
     # Branding Colors
-    RED = "#FF4B4B"      
-    BLUE = "#007BFF"     
+    RED = "#42a5f5"      
+    BLUE = "#42a5f5"     
     SOFT_GRAY = "#F1F5F9" 
     DARK_TEXT = "#000000"
     WHITE = "#FFFFFF"
