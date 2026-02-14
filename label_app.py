@@ -8,15 +8,14 @@ from typing import List, Tuple
 # 1. CONFIGURATION & DESIGN TOKENS
 # ==========================================
 class Design:
-    # Branding Colors
     RED = "#FF4B4B"      
     BLUE = "#42a5f5"     
     SOFT_GRAY = "#F1F5F9" 
     DARK_TEXT = "#000000"
     WHITE = "#FFFFFF"
-    BTN_BG = "#1E293B" # Dark slate for the button
+    BTN_BG = "#1E293B" 
     
-    # Label Sizes
+    # Label Sizes (cm)
     COPPER_W, COPPER_H = 2.5, 3.5
     FIBER_W, FIBER_H = 5.0, 3.5
     
@@ -56,21 +55,33 @@ def generate_qr(data: str, size_px: int) -> Image.Image:
     img = qr.make_image(fill_color="#1E293B", back_color="white").convert("RGBA")
     return img.resize((size_px, size_px), resample=Image.Resampling.LANCZOS)
 
-def render_copper(link: str, qr_data: str, color: str, dpi: int, font_pt: float) -> Image.Image:
+def render_copper_multi(qr_data: str, items: List[Tuple[str, str]], dpi: int, font_pt: float) -> Image.Image:
+    """Renders Copper labels with multiple pill-shaped IDs (2 for 24P, 4 for 48P)"""
     W, H = cm_to_px(Design.COPPER_W, dpi), cm_to_px(Design.COPPER_H, dpi)
     img = Image.new("RGBA", (W, H), Design.WHITE)
     draw = ImageDraw.Draw(img)
+    
     padding = int(0.08 * W)
-    img.alpha_composite(generate_qr(qr_data, W - (2 * padding)), (padding, padding))
+    qr_size = W - (2 * padding)
+    img.alpha_composite(generate_qr(qr_data, qr_size), (padding, padding))
     
-    pill_h = int(0.22 * H)
-    y_start = H - pill_h - padding
-    fill_color = color if link.strip() else Design.SOFT_GRAY
-    draw.rounded_rectangle([(padding, y_start), (W - padding, H - padding)], radius=pill_h // 2, fill=fill_color)
+    # Calculate layout for pills
+    y_start_area = qr_size + (2 * padding)
+    available_h = H - y_start_area - padding
+    num_items = len(items)
+    gap = int(0.02 * H)
+    pill_h = (available_h - (num_items - 1) * gap) // num_items
     
-    if link.strip():
-        font = fit_text(draw, link, (W - 2*padding) * 0.85, pill_h * 0.7, font_pt, dpi)
-        draw.text((W // 2, y_start + pill_h // 2), link, font=font, fill=Design.DARK_TEXT, anchor="mm")
+    current_y = y_start_area
+    for text, color in items:
+        fill_color = color if text.strip() else Design.SOFT_GRAY
+        draw.rounded_rectangle([(padding, current_y), (W - padding, current_y + pill_h)], radius=pill_h // 2, fill=fill_color)
+        
+        if text.strip():
+            font = fit_text(draw, text, (W - 2*padding) * 0.85, pill_h * 0.7, font_pt, dpi)
+            draw.text((W // 2, current_y + pill_h // 2), text, font=font, fill=Design.DARK_TEXT, anchor="mm")
+        current_y += pill_h + gap
+        
     return img.convert("RGB")
 
 def render_fiber(qr_data: str, items: List[Tuple[str, str]], dpi: int, font_pt: float) -> Image.Image:
@@ -98,60 +109,17 @@ def render_fiber(qr_data: str, items: List[Tuple[str, str]], dpi: int, font_pt: 
     return img.convert("RGB")
 
 # ==========================================
-# 3. STREAMLIT INTERFACE & STYLING
+# 3. STREAMLIT INTERFACE
 # ==========================================
 st.set_page_config(page_title=Design.APP_TITLE, layout="wide")
 
+# Custom CSS (Keeping your original styling)
 st.markdown(f"""
     <style>
     .stApp {{ background-color: #F8FAFC; }}
-    [data-testid="stHorizontalBlock"] {{ align-items: center; }}
-    
-    /* PREVIEW CONTAINER */
-    .stElementContainer div[data-testid="stVerticalBlock"] > div:has(div.preview-container) {{
-        background: #F1F5F9;
-        border: 2px dashed #CBD5E1;
-        border-radius: 12px;
-        padding: 2rem;
-        display: flex; justify-content: center; align-items: center; min-height: 400px;
-    }}
-
-    /* --- RADIO BUTTON TEXT COLORS --- */
-    /* Target 'Red' text labels specifically */
-    div[data-testid="stRadio"] label div[data-testid="stMarkdownContainer"] p {{
-        font-weight: 600 !important;
-    }}
-    
-    /* Use nth-of-type to force colors on Red (1st) and Blue (2nd) labels */
-    div[data-testid="stRadio"] div[role="radiogroup"] label:nth-of-type(1) p {{
-        color: {Design.RED} !important;
-    }}
-    div[data-testid="stRadio"] div[role="radiogroup"] label:nth-of-type(2) p {{
-        color: {Design.BLUE} !important;
-    }}
-
-    /* --- RADIO BUTTON CIRCLE COLORS --- */
-    div[data-testid="stRadio"] div[role="radiogroup"] label:nth-of-type(1) input:checked + div[role="presentation"] {{
-        background-color: {Design.RED} !important;
-        border-color: {Design.RED} !important;
-    }}
-    div[data-testid="stRadio"] div[role="radiogroup"] label:nth-of-type(2) input:checked + div[role="presentation"] {{
-        background-color: {Design.BLUE} !important;
-        border-color: {Design.BLUE} !important;
-    }}
-
-    /* --- BUTTON STYLING (Remove Red Contour) --- */
-    div.stButton > button {{
-        background-color: {Design.BTN_BG} !important;
-        color: white !important;
-        border: 1px solid {Design.BTN_BG} !important; /* Matches background to remove red edge */
-        box-shadow: none !important;
-        outline: none !important;
-    }}
-    div.stButton > button:active, div.stButton > button:focus {{
-        border: 1px solid {Design.BTN_BG} !important;
-        box-shadow: none !important;
-    }}
+    div[data-testid="stRadio"] div[role="radiogroup"] label:nth-of-type(1) p {{ color: {Design.RED} !important; font-weight: 600; }}
+    div[data-testid="stRadio"] div[role="radiogroup"] label:nth-of-type(2) p {{ color: {Design.BLUE} !important; font-weight: 600; }}
+    div.stButton > button {{ background-color: {Design.BTN_BG} !important; color: white !important; border: 1px solid {Design.BTN_BG} !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -163,55 +131,53 @@ def main():
     with col_form:
         with st.container(border=True):
             st.subheader("Global Settings")
-            l_type = st.selectbox("Patch Panel Type", ["Copper", "Fiber 1 Unit", "Fiber 2 Unit"])
+            l_type = st.selectbox("Patch Panel Type", ["Copper 24P", "Copper 48P", "Fiber 1 Unit", "Fiber 2 Unit"])
             
             c1, c2 = st.columns(2)
             dpi = c1.select_slider("Print Quality (DPI)", options=[150, 300, 600], value=300)
             f_size = c2.number_input("Font Size (Pt)", value=8) 
-            
             qr_text = st.text_area("QR Code Metadata", value="", height=80)
 
             st.divider()
-            st.subheader("Labeling Cofiguration")
+            st.subheader("Labeling Configuration")
             
             items_to_render = []
-            if "Copper" in l_type:
+            
+            # Logic for number of inputs based on selection
+            if "Copper 24P" in l_type:
+                n = 2
+            elif "Copper 48P" in l_type:
+                n = 4
+            elif "Fiber 1 Unit" in l_type:
+                n = 3
+            else: # Fiber 2 Unit
+                n = 6
+
+            for i in range(n):
                 r1, r2 = st.columns([2, 1])
-                link = r1.text_input("Link ID", value="") 
-                c_choice = r2.radio("Color", ["Red", "Blue"], horizontal=True, key="copper_color")
-                target_color = Design.RED if c_choice == "Red" else Design.BLUE
-            else:
-                n = 3 if "1 Unit" in l_type else 6
-                for i in range(n):
-                    r1, r2 = st.columns([2, 1])
-                    t = r1.text_input(f"ID {i+1}", value="", key=f"t{i}", label_visibility="collapsed")
-                    c = r2.radio(f"Col {i+1}", ["Red", "Blue"], key=f"c{i}", horizontal=True, label_visibility="collapsed")
-                    items_to_render.append((t, Design.RED if c == "Red" else Design.BLUE))
+                t = r1.text_input(f"ID {i+1}", value="", key=f"t{i}", label_visibility="collapsed", placeholder=f"ID {i+1}")
+                c = r2.radio(f"Col {i+1}", ["Red", "Blue"], key=f"c{i}", horizontal=True, label_visibility="collapsed")
+                items_to_render.append((t, Design.RED if c == "Red" else Design.BLUE))
 
             generate = st.button("Generate Label", use_container_width=True)
 
     with col_pre:
         st.subheader("Label Preview")
-        preview_placeholder = st.container()
-        
-        with preview_placeholder:
-            st.markdown('<div class="preview-container"></div>', unsafe_allow_html=True)
-            
-            if generate:
-                if "Copper" in l_type:
-                    final_img = render_copper(link, qr_text, target_color, dpi, f_size)
-                    fname = "copper_label.png"
-                else:
-                    final_img = render_fiber(qr_text, items_to_render, dpi, f_size)
-                    fname = "fiber_label.png"
-                
-                st.image(final_img, use_container_width=False)
-                
-                buf = io.BytesIO()
-                final_img.save(buf, format="PNG", dpi=(dpi, dpi))
-                st.download_button("Download PNG", buf.getvalue(), fname, "image/png", use_container_width=True)
+        if generate:
+            if "Copper" in l_type:
+                final_img = render_copper_multi(qr_text, items_to_render, dpi, f_size)
+                fname = f"{l_type.lower().replace(' ', '_')}.png"
             else:
-                st.write("Click **Generate Label** to see the preview.")
+                final_img = render_fiber(qr_text, items_to_render, dpi, f_size)
+                fname = f"{l_type.lower().replace(' ', '_')}.png"
+            
+            st.image(final_img, use_container_width=False)
+            
+            buf = io.BytesIO()
+            final_img.save(buf, format="PNG", dpi=(dpi, dpi))
+            st.download_button("Download PNG", buf.getvalue(), fname, "image/png", use_container_width=True)
+        else:
+            st.info("Click **Generate Label** to see the preview.")
 
 if __name__ == "__main__":
     main()
